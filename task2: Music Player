@@ -1,0 +1,181 @@
+import os
+import pygame
+import tkinter as tk
+from tkinter import messagebox
+
+class MusicPlayer:
+    def _init_(self, root, folder_path):
+        self.root = root
+        self.root.title("Music Player")
+        self.root.geometry("600x500")
+        
+        # Initialize Pygame mixer
+        pygame.init()
+        pygame.mixer.init()
+        
+        # List to hold music file paths
+        self.music_list = []
+        self.current_index = 0
+        self.is_playing = False
+
+        # GUI Elements
+        control_frame = tk.Frame(self.root)
+        control_frame.pack(pady=20)
+
+        # Create play/pause button
+        self.play_pause_button = tk.Canvas(control_frame, width=50, height=50)
+        self.play_pause_button.grid(row=0, column=0, padx=10)
+        self.play_pause_button.bind("<Button-1>", self.toggle_play_pause)
+        self.play_symbol = self.play_pause_button.create_polygon([10, 10, 10, 40, 40, 25], fill='green')
+        self.pause_symbol = None
+
+        # Create previous song button (round)
+        self.previous_button = tk.Canvas(control_frame, width=50, height=50)
+        self.previous_button.grid(row=0, column=1, padx=10)
+        self.previous_button.bind("<Button-1>", lambda event: self.previous_song())
+        self.previous_button.create_oval(5, 5, 45, 45, fill='blue')
+        self.previous_button.create_polygon([20, 15, 35, 25, 20, 35], fill='white')
+
+        # Create next song button (round)
+        self.next_button = tk.Canvas(control_frame, width=50, height=50)
+        self.next_button.grid(row=0, column=2, padx=10)
+        self.next_button.bind("<Button-1>", lambda event: self.next_song())
+        self.next_button.create_oval(5, 5, 45, 45, fill='blue')
+        self.next_button.create_polygon([30, 15, 15, 25, 30, 35], fill='white')
+
+        # Create backward 30 seconds button (simple arrow)
+        self.backward_button = tk.Canvas(control_frame, width=50, height=50)
+        self.backward_button.grid(row=0, column=3, padx=10)
+        self.backward_button.bind("<Button-1>", lambda event: self.backward_30_seconds())
+        self.backward_button.create_polygon([35, 25, 15, 10, 15, 20, 25, 25, 15, 30, 15, 40], fill='orange')
+
+        # Create forward 30 seconds button (simple arrow)
+        self.forward_button = tk.Canvas(control_frame, width=50, height=50)
+        self.forward_button.grid(row=0, column=4, padx=10)
+        self.forward_button.bind("<Button-1>", lambda event: self.forward_30_seconds())
+        self.forward_button.create_polygon([15, 25, 35, 10, 35, 20, 25, 25, 35, 30, 35, 40], fill='orange')
+
+        # Label to show the current song
+        self.current_song_label = tk.Label(self.root, text="No song playing", font=("Helvetica", 14))
+        self.current_song_label.pack(pady=20)
+
+        # Listbox to show the playlist
+        self.listbox = tk.Listbox(self.root, selectmode=tk.SINGLE, bg="black", fg="white", font=("Helvetica", 12), width=60, height=10)
+        self.listbox.pack(pady=20)
+
+        # Bind the select event of the listbox to a method
+        self.listbox.bind('<<ListboxSelect>>', self.on_select)
+
+        # Text box to display output
+        self.output_text = tk.Text(self.root, wrap=tk.WORD, width=60, height=10)
+        self.output_text.pack(pady=20)
+
+        # Load music from the specified folder path
+        self.load_music_folder(folder_path)
+
+    def load_music_folder(self, folder_path):
+        if folder_path:
+            self.music_list = [os.path.join(folder_path, file) for file in os.listdir(folder_path) if file.endswith('.mp3')]
+            self.listbox.delete(0, tk.END)
+            for song in self.music_list:
+                self.listbox.insert(tk.END, os.path.basename(song))
+            if self.music_list:
+                self.current_index = 0
+                pygame.mixer.music.load(self.music_list[self.current_index])
+                self.update_current_song_label()
+            else:
+                messagebox.showinfo("No Music Files", "No music files found in the folder.")
+
+    def play(self):
+        if not pygame.mixer.music.get_busy() and self.music_list:
+            pygame.mixer.music.play()
+            self.is_playing = True
+            self.update_status("Playing")
+
+    def pause(self):
+        if self.is_playing:
+            pygame.mixer.music.pause()
+            self.is_playing = False
+            self.update_status("Paused")
+
+    def stop(self):
+        pygame.mixer.music.stop()
+        self.is_playing = False
+        self.update_status("Stopped")
+
+    def next_song(self):
+        if self.music_list:
+            self.current_index = (self.current_index + 1) % len(self.music_list)
+            pygame.mixer.music.load(self.music_list[self.current_index])
+            pygame.mixer.music.play()
+            self.is_playing = True
+            self.listbox.selection_clear(0, tk.END)
+            self.listbox.selection_set(self.current_index)
+            self.update_current_song_label()
+            self.update_status("Playing")
+
+    def previous_song(self):
+        if self.music_list:
+            self.current_index = (self.current_index - 1) % len(self.music_list)
+            pygame.mixer.music.load(self.music_list[self.current_index])
+            pygame.mixer.music.play()
+            self.is_playing = True
+            self.listbox.selection_clear(0, tk.END)
+            self.listbox.selection_set(self.current_index)
+            self.update_current_song_label()
+            self.update_status("Playing")
+
+    def forward_30_seconds(self):
+        if self.is_playing and pygame.mixer.music.get_busy():
+            current_pos = pygame.mixer.music.get_pos() / 1000.0  # Get current position in seconds
+            pygame.mixer.music.rewind()
+            pygame.mixer.music.set_pos(current_pos + 30)  # Set new position 30 seconds forward
+            self.update_status("Forwarded 30s")
+
+    def backward_30_seconds(self):
+        if self.is_playing and pygame.mixer.music.get_busy():
+            current_pos = pygame.mixer.music.get_pos() / 1000.0  # Get current position in seconds
+            new_pos = max(0, current_pos - 30)  # Ensure the new position is not less than 0
+            pygame.mixer.music.rewind()
+            pygame.mixer.music.set_pos(new_pos)  # Set new position 30 seconds backward
+            self.update_status("Backwarded 30s")
+
+    def toggle_play_pause(self, event):
+        if self.is_playing:
+            self.pause()
+            self.play_pause_button.delete(self.pause_symbol)
+            self.play_symbol = self.play_pause_button.create_polygon([10, 10, 10, 40, 40, 25], fill='green')
+        else:
+            self.play()
+            self.play_pause_button.delete(self.play_symbol)
+            self.pause_symbol = self.play_pause_button.create_rectangle(15, 10, 20, 40, fill='green')
+            self.play_pause_button.create_rectangle(30, 10, 35, 40, fill='green')
+
+    def on_select(self, event):
+        if self.music_list:
+            self.current_index = self.listbox.curselection()[0]
+            pygame.mixer.music.load(self.music_list[self.current_index])
+            pygame.mixer.music.play()
+            self.is_playing = True
+            self.update_current_song_label()
+            self.update_status("Playing")
+            self.play_pause_button.delete(self.play_symbol)
+            self.pause_symbol = self.play_pause_button.create_rectangle(15, 10, 20, 40, fill='green')
+            self.play_pause_button.create_rectangle(30, 10, 35, 40, fill='green')
+
+    def update_current_song_label(self):
+        self.current_song_label.config(text=os.path.basename(self.music_list[self.current_index]))
+
+    def update_status(self, status):
+        self.current_song_label.config(text=f"{os.path.basename(self.music_list[self.current_index])} - {status}")
+        self.output_text.insert(tk.END, f"{os.path.basename(self.music_list[self.current_index])} - {status}\n")
+        self.output_text.see(tk.END)
+
+if _name_ == "_main_":
+    root = tk.Tk()
+    
+    # Set the folder path directly in the code
+    folder_path = "C:/Users/User/Music"  # Update this to your actual music folder path
+    
+    player = MusicPlayer(root, folder_path)
+    root.mainloop()
