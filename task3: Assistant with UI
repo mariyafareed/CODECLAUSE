@@ -1,0 +1,137 @@
+import tkinter as tk
+from tkinter import scrolledtext
+from PIL import Image, ImageTk
+import threading
+import speech_recognition as sr
+import pyttsx3
+import wikipediaapi
+import requests
+from io import BytesIO
+
+# Initialize the Text-to-Speech engine
+engine = pyttsx3.init()
+
+def speak(text):
+    """Function to convert text to speech"""
+    engine.say(text)
+    engine.runAndWait()
+
+def listen():
+    """Function to capture voice input and convert it to text"""
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        log("Listening...")
+        recognizer.adjust_for_ambient_noise(source, duration=1)
+        try:
+            audio = recognizer.listen(source, timeout=10, phrase_time_limit=10)
+        except sr.WaitTimeoutError:
+            log("Listening timed out. Please try again.")
+            return None
+    try:
+        log("Recognizing...")
+        query = recognizer.recognize_google(audio, language='en-US')
+        log(f"You said: {query}\n")
+        return query.lower()
+    except sr.UnknownValueError:
+        log("Sorry, I didn't catch that. Please try again.")
+    except sr.RequestError as e:
+        log(f"Could not request results from Google Speech Recognition service; {e}")
+    return None
+
+def get_weather(city):
+    """Function to fetch weather updates from OpenWeatherMap API"""
+    api_key = '354c1db7b55896d1204f847047fec3e7'
+    url = f'http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric'
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        if data['cod'] == 200:
+            weather = data['weather'][0]['description']
+            temperature = data['main']['temp']
+            return f"The weather in {city} is {weather} with a temperature of {temperature}°C."
+        else:
+            return f"Error: {data.get('message', 'Unable to fetch weather information.')}"
+    except requests.exceptions.RequestException as e:
+        return f"Error: Unable to fetch weather information due to {str(e)}"
+    except ValueError as e:
+        return "Error: Unable to parse JSON response."
+
+def log(text):
+    """Function to log text to the scrolled text widget"""
+    output_area.insert(tk.END, text + "\n")
+    output_area.see(tk.END)
+
+def display_image(url):
+    """Function to display an image from a URL"""
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        img_data = response.content
+        img = Image.open(BytesIO(img_data))
+        img = img.resize((250, 250), Image.ANTIALIAS)
+        img_tk = ImageTk.PhotoImage(img)
+        image_label.config(image=img_tk)
+        image_label.image = img_tk
+    except Exception as e:
+        log(f"Error loading image: {e}")
+
+def fetch_wikipedia_info(topic):
+    """Function to fetch information about a topic from Wikipedia"""
+    user_agent = "MyVoiceAssistant/1.0 (contact@example.com)"
+    headers = {'User-Agent': user_agent}
+    
+    wiki = wikipediaapi.Wikipedia('en', headers=headers)
+    page = wiki.page(topic)
+    
+    if page.exists():
+        summary = page.summary.split('\n')[0]
+        speak("According to Wikipedia")
+        speak(summary)
+        log(summary)
+        if page.images:
+            display_image(next(iter(page.images.values())))
+    else:
+        speak("Sorry, I couldn't find any information on that topic.")
+        log("Page Error: Couldn't find information on that topic.")
+
+def handle_command():
+    """Function to handle user commands and perform corresponding actions"""
+    query = listen()
+    if query:
+        if "stop" in query:
+            speak("Goodbye!")
+            root.destroy()
+        elif "wikipedia" in query:
+            speak("Searching Wikipedia...")
+            query = query.replace("wikipedia", "").strip()
+            fetch_wikipedia_info(query)
+        elif "weather" in query:
+            speak("Sure, which city?")
+            city = listen()
+            if city:
+                weather_info = get_weather(city)
+                speak(weather_info)
+                log(weather_info)
+
+def threaded_handle_command():
+    threading.Thread(target=handle_command).start()
+
+# Create the main window
+root = tk.Tk()
+root.title("Voice Assistant")
+
+# Create a scrolled text widget for output
+output_area = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=50, height=20, font=("Arial", 12))
+output_area.pack(pady=10)
+
+# Create a label to display images
+image_label = tk.Label(root)
+image_label.pack(pady=10)
+
+# Create a button to start listening
+listen_button = tk.Button(root, text="Start Listening", command=threaded_handle_command, font=("Arial", 14))
+listen_button.pack(pady=10)
+
+# Run the GUI main loop
+root.mainloop()
